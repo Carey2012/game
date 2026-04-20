@@ -1,6 +1,23 @@
 (function(){
     'use strict';
 
+    // 配置 marked 并集成 highlight.js（可选）
+    if (typeof marked !== 'undefined') {
+        marked.setOptions({
+            breaks: true,        // 支持 GFM 换行
+            gfm: true,
+            highlight: function(code, lang) {
+                // 如果 hljs 可用则高亮，否则返回纯文本
+                if (typeof hljs !== 'undefined' && lang && hljs.getLanguage(lang)) {
+                    try {
+                        return hljs.highlight(code, { language: lang }).value;
+                    } catch (e) {}
+                }
+                return code;
+            }
+        });
+    }
+
     // DOM 元素
     const nameInput = document.getElementById('configName');
     const modelInput = document.getElementById('modelName');
@@ -13,11 +30,24 @@
 
     const STORAGE_KEY = 'ai_config_v1';
 
-    // ---------- 辅助函数：显示消息 ----------
+    // 辅助函数：添加消息（支持 Markdown）
     function addMessage(role, content) {
         const msgDiv = document.createElement('div');
         msgDiv.className = `message ${role}`;
-        msgDiv.textContent = content;
+        
+        if (role === 'assistant' && typeof marked !== 'undefined') {
+            // 助手消息：使用 marked 解析 Markdown
+            try {
+                msgDiv.innerHTML = marked.parse(content);
+            } catch (e) {
+                console.warn('Markdown 解析失败，降级为纯文本', e);
+                msgDiv.textContent = content;
+            }
+        } else {
+            // 用户消息或系统消息：纯文本，但保留换行
+            msgDiv.textContent = content;
+        }
+        
         chatMessages.appendChild(msgDiv);
         chatMessages.scrollTop = chatMessages.scrollHeight;
     }
@@ -30,7 +60,7 @@
         }
     }
 
-    // ---------- 保存配置 ----------
+    // 保存配置
     function saveConfig() {
         const config = {
             name: nameInput.value.trim(),
@@ -49,7 +79,7 @@
         return true;
     }
 
-    // ---------- 加载配置到表单 ----------
+    // 加载配置到表单
     function loadConfigToForm() {
         const saved = localStorage.getItem(STORAGE_KEY);
         if (!saved) {
@@ -68,7 +98,7 @@
         }
     }
 
-    // ---------- 发送对话请求 ----------
+    // 发送对话请求
     async function sendMessage() {
         const saved = localStorage.getItem(STORAGE_KEY);
         if (!saved) {
@@ -134,6 +164,7 @@
                 reply = JSON.stringify(data);
             }
 
+            // 添加助手消息（自动渲染 Markdown）
             addMessage('assistant', reply);
             setStatus('✓ 请求成功');
 
@@ -145,7 +176,7 @@
         }
     }
 
-    // ---------- 绑定事件 ----------
+    // 绑定事件
     document.getElementById('saveConfigBtn').addEventListener('click', saveConfig);
     document.getElementById('loadConfigBtn').addEventListener('click', loadConfigToForm);
     sendBtn.addEventListener('click', sendMessage);
@@ -156,7 +187,7 @@
         }
     });
 
-    // ---------- 初始化：如果有保存的配置，静默填充非敏感字段（不填key）----------
+    // 初始化：填充非敏感字段
     (function init() {
         const saved = localStorage.getItem(STORAGE_KEY);
         if (saved) {
@@ -165,7 +196,6 @@
                 nameInput.value = config.name || '';
                 modelInput.value = config.model || '';
                 proxyInput.value = config.proxyUrl || '';
-                // key 留空，用户需手动加载或输入
                 setStatus('ℹ️ 检测到已保存配置，点击“加载”填入 API Key', false);
             } catch (e) {}
         }

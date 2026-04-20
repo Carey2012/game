@@ -170,6 +170,67 @@ button.secondary:hover {
     text-align: center;
 }
 
+/* Markdown 渲染后的内容样式 */
+.message.assistant p {
+    margin-bottom: 0.75rem;
+}
+.message.assistant p:last-child {
+    margin-bottom: 0;
+}
+.message.assistant ul, .message.assistant ol {
+    margin: 0.5rem 0 0.5rem 1.5rem;
+}
+.message.assistant li {
+    margin-bottom: 0.25rem;
+}
+.message.assistant code {
+    background: rgba(0,0,0,0.05);
+    padding: 0.2rem 0.4rem;
+    border-radius: 6px;
+    font-family: 'SF Mono', Monaco, monospace;
+    font-size: 0.85em;
+}
+.message.assistant pre {
+    background: #1e1e2f;
+    color: #e2e8f0;
+    padding: 1rem;
+    border-radius: 12px;
+    overflow-x: auto;
+    margin: 0.75rem 0;
+}
+.message.assistant pre code {
+    background: transparent;
+    padding: 0;
+    color: inherit;
+}
+.message.assistant blockquote {
+    border-left: 4px solid #3b82f6;
+    padding-left: 1rem;
+    margin: 0.75rem 0;
+    color: #475569;
+    font-style: italic;
+}
+.message.assistant a {
+    color: #2563eb;
+    text-decoration: none;
+}
+.message.assistant a:hover {
+    text-decoration: underline;
+}
+.message.assistant table {
+    border-collapse: collapse;
+    margin: 0.75rem 0;
+    width: 100%;
+}
+.message.assistant th, .message.assistant td {
+    border: 1px solid #cbd5e1;
+    padding: 0.4rem 0.6rem;
+    text-align: left;
+}
+.message.assistant th {
+    background: #e2e8f0;
+}
+
 .chat-input-area {
     display: flex;
     gap: 0.8rem;
