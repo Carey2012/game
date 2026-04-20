@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 配置面板 · 模块化</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <h1>🤖 自定义 AI 配置</h1>
+    
+    <div class="warning">
+        ⚠️ 你的 API Key 仅保存在浏览器本地 (localStorage)。请勿在公共电脑使用。
+    </div>
+
+    <div class="config-panel">
+        <div class="config-item">
+            <label>名称 (可选)</label>
+            <input type="text" id="configName" placeholder="例如: 我的翻译助手" value="翻译">
+        </div>
+        <div class="config-item">
+            <label>模型</label>
+            <input type="text" id="modelName" placeholder="例如: gpt-5.4" value="gpt-5.4">
+        </div>
+        <div class="config-item">
+            <label>KEY</label>
+            <input type="password" id="apiKey" placeholder="sk-...">
+        </div>
+        <div class="config-item">
+            <label>Proxy API (完整 URL)</label>
+            <input type="text" id="proxyUrl" placeholder="https://ai.luogu.me/v1/chat/completions" value="https://ai.luogu.me/v1/chat/completions">
+        </div>
+        <div class="button-group">
+            <button id="saveConfigBtn">💾 保存配置</button>
+            <button id="loadConfigBtn" class="secondary">📂 加载已保存配置</button>
+        </div>
+    </div>
+
+    <h2>💬 测试对话</h2>
+    <div id="chat-box">点击下方按钮发送一条测试消息...</div>
+    <textarea id="userInput" rows="2" placeholder="输入你的问题...">你好，请用一句话介绍你自己</textarea>
+    <div class="action-bar">
+        <button id="sendBtn">🚀 发送请求</button>
+        <span id="status"></span>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

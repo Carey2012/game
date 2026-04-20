@@ -1,0 +1,107 @@
+body {
+    font-family: system-ui, -apple-system, sans-serif;
+    max-width: 700px;
+    margin: 2rem auto;
+    padding: 0 1.5rem;
+    line-height: 1.5;
+    color: #1e1e2f;
+}
+
+h1 { font-weight: 600; font-size: 1.8rem; margin-bottom: 0.5rem; }
+h2 { font-weight: 500; font-size: 1.4rem; margin: 1.5rem 0 1rem; }
+
+.warning {
+    background: #fff3cd;
+    border-left: 4px solid #ffc107;
+    padding: 0.75rem 1rem;
+    border-radius: 6px;
+    margin-bottom: 1.8rem;
+    font-size: 0.9rem;
+}
+
+.config-panel {
+    background: #f8f9fa;
+    padding: 1.5rem;
+    border-radius: 14px;
+    border: 1px solid #e9ecef;
+    margin-bottom: 1.5rem;
+}
+
+.config-item {
+    margin-bottom: 1.2rem;
+}
+
+label {
+    display: block;
+    font-weight: 500;
+    margin-bottom: 0.3rem;
+    font-size: 0.9rem;
+    color: #495057;
+}
+
+input, textarea {
+    width: 100%;
+    padding: 0.7rem 0.9rem;
+    border: 1px solid #ced4da;
+    border-radius: 10px;
+    font-family: 'SF Mono', Monaco, monospace;
+    font-size: 0.95rem;
+    box-sizing: border-box;
+    transition: border-color 0.15s;
+    background: white;
+}
+input:focus, textarea:focus {
+    outline: none;
+    border-color: #007acc;
+    box-shadow: 0 0 0 3px rgba(0, 122, 204, 0.1);
+}
+
+button {
+    background: #007acc;
+    color: white;
+    border: none;
+    padding: 0.65rem 1.4rem;
+    border-radius: 30px;
+    cursor: pointer;
+    font-size: 0.95rem;
+    font-weight: 500;
+    transition: background 0.15s, transform 0.05s;
+    border: 1px solid transparent;
+}
+button:hover { background: #005a9e; }
+button:active { transform: scale(0.97); }
+button.secondary {
+    background: #e9ecef;
+    color: #1e1e2f;
+    border-color: #ced4da;
+}
+button.secondary:hover { background: #dee2e6; }
+
+.button-group {
+    display: flex;
+    gap: 0.8rem;
+    margin-top: 0.5rem;
+}
+
+#chat-box {
+    border: 1px solid #dee2e6;
+    border-radius: 16px;
+    padding: 1.2rem 1.5rem;
+    min-height: 120px;
+    background: #fafbfc;
+    margin-bottom: 1.2rem;
+    white-space: pre-wrap;
+    font-size: 0.95rem;
+}
+
+.action-bar {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+#status {
+    color: #6c757d;
+    font-size: 0.9rem;
+}
