@@ -1,4 +1,4 @@
-(function() {
+(function(){
     'use strict';
 
     // DOM 元素
@@ -6,43 +6,51 @@
     const modelInput = document.getElementById('modelName');
     const keyInput = document.getElementById('apiKey');
     const proxyInput = document.getElementById('proxyUrl');
-    const chatBox = document.getElementById('chat-box');
+    const chatMessages = document.getElementById('chatMessages');
     const userInput = document.getElementById('userInput');
-    const statusSpan = document.getElementById('status');
+    const sendBtn = document.getElementById('sendBtn');
+    const statusDiv = document.getElementById('status');
 
-    const STORAGE_KEY = 'user_ai_config';
+    const STORAGE_KEY = 'ai_config_v1';
 
-    // 保存配置
-    function saveConfig() {
-        const config = {
-            name: nameInput.value.trim() || '翻译',
-            model: modelInput.value.trim() || 'gpt-5.4',
-            key: keyInput.value.trim(),
-            proxyUrl: proxyInput.value.trim()
-        };
-        
-        if (!config.key) {
-            alert('请填写 API KEY');
-            return false;
-        }
-        if (!config.proxyUrl) {
-            alert('请填写 Proxy API 地址');
-            return false;
-        }
+    // ---------- 辅助函数：显示消息 ----------
+    function addMessage(role, content) {
+        const msgDiv = document.createElement('div');
+        msgDiv.className = `message ${role}`;
+        msgDiv.textContent = content;
+        chatMessages.appendChild(msgDiv);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
 
-        try {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
-            statusSpan.textContent = '✓ 配置已保存';
-            setTimeout(() => statusSpan.textContent = '', 2500);
-            return true;
-        } catch (e) {
-            alert('保存失败: ' + e.message);
-            return false;
+    function setStatus(text, isError = false) {
+        statusDiv.textContent = text;
+        statusDiv.style.color = isError ? '#dc2626' : '#64748b';
+        if (!isError) {
+            setTimeout(() => { statusDiv.textContent = ''; }, 3000);
         }
     }
 
-    // 加载配置
-    function loadConfig() {
+    // ---------- 保存配置 ----------
+    function saveConfig() {
+        const config = {
+            name: nameInput.value.trim(),
+            model: modelInput.value.trim(),
+            key: keyInput.value.trim(),
+            proxyUrl: proxyInput.value.trim()
+        };
+
+        if (!config.key || !config.proxyUrl || !config.model) {
+            alert('请至少填写模型、API Key 和代理地址');
+            return false;
+        }
+
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
+        setStatus('✓ 配置已保存');
+        return true;
+    }
+
+    // ---------- 加载配置到表单 ----------
+    function loadConfigToForm() {
         const saved = localStorage.getItem(STORAGE_KEY);
         if (!saved) {
             alert('没有已保存的配置');
@@ -50,38 +58,44 @@
         }
         try {
             const config = JSON.parse(saved);
-            nameInput.value = config.name || '翻译';
-            modelInput.value = config.model || 'gpt-5.4';
+            nameInput.value = config.name || '';
+            modelInput.value = config.model || '';
             keyInput.value = config.key || '';
             proxyInput.value = config.proxyUrl || '';
-            statusSpan.textContent = '✓ 配置已加载';
-            setTimeout(() => statusSpan.textContent = '', 2500);
+            setStatus('✓ 配置已加载');
         } catch (e) {
-            alert('配置数据损坏，请重新保存');
+            alert('配置数据损坏');
         }
     }
 
-    // 发送 AI 请求
-    async function callAI() {
+    // ---------- 发送对话请求 ----------
+    async function sendMessage() {
         const saved = localStorage.getItem(STORAGE_KEY);
         if (!saved) {
-            alert('请先保存配置');
+            alert('请先在左侧保存 API 配置');
             return;
         }
 
         const config = JSON.parse(saved);
-        const userMessage = userInput.value.trim();
-        if (!userMessage) {
-            alert('请输入问题');
-            return;
-        }
+        const message = userInput.value.trim();
+        if (!message) return;
 
-        chatBox.textContent = '⏳ 正在请求 AI ...';
-        statusSpan.textContent = '请求中...';
+        // 显示用户消息
+        addMessage('user', message);
+        userInput.value = '';
+        
+        // 显示临时加载消息
+        const loadingMsg = document.createElement('div');
+        loadingMsg.className = 'message assistant';
+        loadingMsg.textContent = '⏳ 思考中...';
+        chatMessages.appendChild(loadingMsg);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+        
+        setStatus('请求中...');
 
         const requestBody = {
             model: config.model,
-            messages: [{ role: 'user', content: userMessage }],
+            messages: [{ role: 'user', content: message }],
             stream: false,
             temperature: 0.7
         };
@@ -97,13 +111,16 @@
             });
 
             if (!response.ok) {
-                const errorText = await response.text();
-                throw new Error(`HTTP ${response.status}: ${errorText}`);
+                const errText = await response.text();
+                throw new Error(`HTTP ${response.status}: ${errText}`);
             }
 
             const data = await response.json();
             
-            // 兼容多种响应格式
+            // 移除加载消息
+            loadingMsg.remove();
+
+            // 解析常见响应格式
             let reply = '无法解析响应内容';
             if (data.choices?.[0]?.message?.content) {
                 reply = data.choices[0].message.content;
@@ -111,39 +128,47 @@
                 reply = data.content;
             } else if (data.reply) {
                 reply = data.reply;
+            } else if (data.message) {
+                reply = data.message;
             } else {
-                reply = JSON.stringify(data, null, 2);
+                reply = JSON.stringify(data);
             }
 
-            chatBox.textContent = `🤖 ${reply}`;
-            statusSpan.textContent = '✓ 请求成功';
-            setTimeout(() => statusSpan.textContent = '', 2500);
+            addMessage('assistant', reply);
+            setStatus('✓ 请求成功');
+
         } catch (error) {
-            chatBox.textContent = `❌ 请求失败：${error.message}`;
-            statusSpan.textContent = '✗ 请求失败';
-            setTimeout(() => statusSpan.textContent = '', 3000);
-            console.error('API 调用错误:', error);
+            loadingMsg.remove();
+            addMessage('system', `❌ 请求失败：${error.message}`);
+            setStatus(`✗ ${error.message}`, true);
+            console.error('API Error:', error);
         }
     }
 
-    // 事件绑定
+    // ---------- 绑定事件 ----------
     document.getElementById('saveConfigBtn').addEventListener('click', saveConfig);
-    document.getElementById('loadConfigBtn').addEventListener('click', loadConfig);
-    document.getElementById('sendBtn').addEventListener('click', callAI);
+    document.getElementById('loadConfigBtn').addEventListener('click', loadConfigToForm);
+    sendBtn.addEventListener('click', sendMessage);
+    userInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage();
+        }
+    });
 
-    // 页面初始化：若存在配置则预填非敏感字段（不自动填 key）
+    // ---------- 初始化：如果有保存的配置，静默填充非敏感字段（不填key）----------
     (function init() {
         const saved = localStorage.getItem(STORAGE_KEY);
         if (saved) {
             try {
                 const config = JSON.parse(saved);
-                nameInput.value = config.name || '翻译';
-                modelInput.value = config.model || 'gpt-5.4';
+                nameInput.value = config.name || '';
+                modelInput.value = config.model || '';
                 proxyInput.value = config.proxyUrl || '';
-                // 不自动填充密钥，需用户手动加载或输入
-                statusSpan.textContent = 'ℹ️ 检测到已保存配置，点击“加载”可填入 KEY';
-                setTimeout(() => statusSpan.textContent = '', 4000);
+                // key 留空，用户需手动加载或输入
+                setStatus('ℹ️ 检测到已保存配置，点击“加载”填入 API Key', false);
             } catch (e) {}
         }
     })();
+
 })();
