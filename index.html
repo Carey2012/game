@@ -39,7 +39,10 @@
 
         <!-- 右侧：对话区域 (2/3) -->
         <main class="chat-area">
-            <h2>💬 对话</h2>
+            <h2 style="display: flex; justify-content: space-between;">
+                💬 对话
+                <button id="clearChatBtn" style="width: auto; padding: 0.3rem 1rem; background: #e2e8f0; color: #1e293b;">🗑️ 清空对话</button>
+            </h2>
             <div id="chatMessages" class="chat-messages">
                 <div class="message system">在左侧填写 API 配置并保存，然后开始对话。</div>
             </div>

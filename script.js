@@ -4,10 +4,9 @@
     // 配置 marked 并集成 highlight.js（可选）
     if (typeof marked !== 'undefined') {
         marked.setOptions({
-            breaks: true,        // 支持 GFM 换行
+            breaks: true,
             gfm: true,
             highlight: function(code, lang) {
-                // 如果 hljs 可用则高亮，否则返回纯文本
                 if (typeof hljs !== 'undefined' && lang && hljs.getLanguage(lang)) {
                     try {
                         return hljs.highlight(code, { language: lang }).value;
@@ -28,30 +27,87 @@
     const sendBtn = document.getElementById('sendBtn');
     const statusDiv = document.getElementById('status');
 
-    const STORAGE_KEY = 'ai_config_v1';
+    const STORAGE_KEY_CONFIG = 'ai_config_v1';
+    const STORAGE_KEY_HISTORY = 'ai_chat_history_v1';  // 新增：对话历史存储键
 
-    // 辅助函数：添加消息（支持 Markdown）
-    function addMessage(role, content) {
+    // ---------- 对话历史保存与加载 ----------
+    function saveChatHistory() {
+        const messages = [];
+        // 遍历 chatMessages 中的所有消息元素
+        for (const msgEl of chatMessages.children) {
+            // 跳过加载中的临时消息
+            if (msgEl.textContent === '⏳ 思考中...') continue;
+            
+            const role = Array.from(msgEl.classList).find(c => 
+                c === 'user' || c === 'assistant' || c === 'system'
+            );
+            if (!role) continue;
+            
+            // 对于助手消息，我们保存原始 Markdown 文本（需要额外存储）
+            // 简单做法：直接从元素的 dataset 中读取原始内容
+            const content = msgEl.dataset.rawContent || msgEl.textContent;
+            messages.push({ role, content });
+        }
+        localStorage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(messages));
+    }
+
+    function loadChatHistory() {
+        const saved = localStorage.getItem(STORAGE_KEY_HISTORY);
+        if (!saved) return;
+        
+        try {
+            const messages = JSON.parse(saved);
+            // 清空当前显示（但保留可能的系统欢迎语？这里我们完全替换）
+            chatMessages.innerHTML = '';
+            for (const msg of messages) {
+                // 使用 addMessage 来渲染，但要避免重复保存触发递归
+                _addMessageInternal(msg.role, msg.content);
+            }
+        } catch (e) {
+            console.warn('加载对话历史失败', e);
+        }
+    }
+
+    // 内部渲染方法（不触发保存，避免死循环）
+    function _addMessageInternal(role, content) {
         const msgDiv = document.createElement('div');
         msgDiv.className = `message ${role}`;
         
         if (role === 'assistant' && typeof marked !== 'undefined') {
-            // 助手消息：使用 marked 解析 Markdown
             try {
                 msgDiv.innerHTML = marked.parse(content);
             } catch (e) {
-                console.warn('Markdown 解析失败，降级为纯文本', e);
                 msgDiv.textContent = content;
             }
         } else {
-            // 用户消息或系统消息：纯文本，但保留换行
             msgDiv.textContent = content;
         }
         
+        // 将原始内容存入 dataset，方便后续保存
+        msgDiv.dataset.rawContent = content;
         chatMessages.appendChild(msgDiv);
         chatMessages.scrollTop = chatMessages.scrollHeight;
     }
 
+    // 对外暴露的添加消息方法（会触发保存）
+    function addMessage(role, content) {
+        _addMessageInternal(role, content);
+        saveChatHistory();  // 每次添加后保存
+    }
+
+    // 清空对话历史
+    function clearChatHistory() {
+        chatMessages.innerHTML = '';
+        // 可选：加回一条系统提示
+        const sysMsg = document.createElement('div');
+        sysMsg.className = 'message system';
+        sysMsg.textContent = '对话已清空。';
+        sysMsg.dataset.rawContent = '对话已清空。';
+        chatMessages.appendChild(sysMsg);
+        saveChatHistory();
+    }
+
+    // ---------- 原有功能（略作调整）----------
     function setStatus(text, isError = false) {
         statusDiv.textContent = text;
         statusDiv.style.color = isError ? '#dc2626' : '#64748b';
@@ -60,7 +116,6 @@
         }
     }
 
-    // 保存配置
     function saveConfig() {
         const config = {
             name: nameInput.value.trim(),
@@ -74,14 +129,13 @@
             return false;
         }
 
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
+        localStorage.setItem(STORAGE_KEY_CONFIG, JSON.stringify(config));
         setStatus('✓ 配置已保存');
         return true;
     }
 
-    // 加载配置到表单
     function loadConfigToForm() {
-        const saved = localStorage.getItem(STORAGE_KEY);
+        const saved = localStorage.getItem(STORAGE_KEY_CONFIG);
         if (!saved) {
             alert('没有已保存的配置');
             return;
@@ -98,9 +152,8 @@
         }
     }
 
-    // 发送对话请求
     async function sendMessage() {
-        const saved = localStorage.getItem(STORAGE_KEY);
+        const saved = localStorage.getItem(STORAGE_KEY_CONFIG);
         if (!saved) {
             alert('请先在左侧保存 API 配置');
             return;
@@ -150,7 +203,6 @@
             // 移除加载消息
             loadingMsg.remove();
 
-            // 解析常见响应格式
             let reply = '无法解析响应内容';
             if (data.choices?.[0]?.message?.content) {
                 reply = data.choices[0].message.content;
@@ -164,7 +216,6 @@
                 reply = JSON.stringify(data);
             }
 
-            // 添加助手消息（自动渲染 Markdown）
             addMessage('assistant', reply);
             setStatus('✓ 请求成功');
 
@@ -187,17 +238,33 @@
         }
     });
 
-    // 初始化：填充非敏感字段
+    // 可选：添加清空对话按钮（需要在 HTML 中添加对应按钮）
+    document.getElementById('clearChatBtn')?.addEventListener('click', clearChatHistory);
+
+    // 初始化
     (function init() {
-        const saved = localStorage.getItem(STORAGE_KEY);
-        if (saved) {
+        // 加载配置预填
+        const savedConfig = localStorage.getItem(STORAGE_KEY_CONFIG);
+        if (savedConfig) {
             try {
-                const config = JSON.parse(saved);
+                const config = JSON.parse(savedConfig);
                 nameInput.value = config.name || '';
                 modelInput.value = config.model || '';
                 proxyInput.value = config.proxyUrl || '';
                 setStatus('ℹ️ 检测到已保存配置，点击“加载”填入 API Key', false);
             } catch (e) {}
+        }
+
+        // 加载对话历史
+        loadChatHistory();
+        
+        // 如果没有任何消息，显示一条默认欢迎语
+        if (chatMessages.children.length === 0) {
+            const sysMsg = document.createElement('div');
+            sysMsg.className = 'message system';
+            sysMsg.textContent = '在左侧填写 API 配置并保存，然后开始对话。';
+            sysMsg.dataset.rawContent = '在左侧填写 API 配置并保存，然后开始对话。';
+            chatMessages.appendChild(sysMsg);
         }
     })();
 
