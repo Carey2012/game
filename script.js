@@ -1,7 +1,7 @@
 (function(){
     'use strict';
 
-    // 配置 marked 并集成 highlight.js（可选）
+    // 配置 marked
     if (typeof marked !== 'undefined') {
         marked.setOptions({
             breaks: true,
@@ -18,6 +18,8 @@
     }
 
     // DOM 元素
+    const configListEl = document.getElementById('configList');
+    const noConfigMsg = document.getElementById('noConfigMsg');
     const nameInput = document.getElementById('configName');
     const modelInput = document.getElementById('modelName');
     const keyInput = document.getElementById('apiKey');
@@ -27,48 +29,213 @@
     const sendBtn = document.getElementById('sendBtn');
     const statusDiv = document.getElementById('status');
 
-    const STORAGE_KEY_CONFIG = 'ai_config_v1';
-    const STORAGE_KEY_HISTORY = 'ai_chat_history_v1';  // 新增：对话历史存储键
+    // 存储键
+    const STORAGE_CONFIGS = 'ai_configs_list_v1';    // 配置数组
+    const STORAGE_ACTIVE_ID = 'ai_active_config_id_v1';
+    const STORAGE_HISTORY = 'ai_chat_history_v1';
 
-    // ---------- 对话历史保存与加载 ----------
+    // 状态
+    let configs = [];                // 所有配置 { id, name, model, key, proxyUrl }
+    let activeConfigId = null;
+
+    // ---------- 配置管理 ----------
+    function loadConfigs() {
+        const saved = localStorage.getItem(STORAGE_CONFIGS);
+        if (saved) {
+            try {
+                configs = JSON.parse(saved);
+            } catch (e) {
+                configs = [];
+            }
+        }
+        // 确保每个配置都有 id（兼容旧数据）
+        configs = configs.map(cfg => {
+            if (!cfg.id) cfg.id = Date.now() + Math.random().toString(36);
+            return cfg;
+        });
+    }
+
+    function saveConfigsToStorage() {
+        localStorage.setItem(STORAGE_CONFIGS, JSON.stringify(configs));
+    }
+
+    function loadActiveId() {
+        const savedId = localStorage.getItem(STORAGE_ACTIVE_ID);
+        if (savedId && configs.some(c => c.id === savedId)) {
+            activeConfigId = savedId;
+        } else if (configs.length > 0) {
+            activeConfigId = configs[0].id;
+        } else {
+            activeConfigId = null;
+        }
+    }
+
+    function saveActiveId() {
+        if (activeConfigId) {
+            localStorage.setItem(STORAGE_ACTIVE_ID, activeConfigId);
+        } else {
+            localStorage.removeItem(STORAGE_ACTIVE_ID);
+        }
+    }
+
+    // 渲染配置列表
+    function renderConfigList() {
+        configListEl.innerHTML = '';
+        if (configs.length === 0) {
+            noConfigMsg.style.display = 'block';
+            return;
+        }
+        noConfigMsg.style.display = 'none';
+        
+        configs.forEach(cfg => {
+            const li = document.createElement('li');
+            li.dataset.id = cfg.id;
+            if (cfg.id === activeConfigId) {
+                li.classList.add('active');
+            }
+
+            const infoSpan = document.createElement('span');
+            infoSpan.innerHTML = `<span class="config-name">${escapeHtml(cfg.name || '未命名')}</span><span class="config-model">${escapeHtml(cfg.model || '')}</span>`;
+            
+            const delBtn = document.createElement('button');
+            delBtn.className = 'delete-config-btn';
+            delBtn.innerHTML = '✕';
+            delBtn.title = '删除配置';
+            delBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                deleteConfig(cfg.id);
+            });
+
+            li.appendChild(infoSpan);
+            li.appendChild(delBtn);
+            
+            li.addEventListener('click', () => {
+                setActiveConfig(cfg.id);
+            });
+            
+            configListEl.appendChild(li);
+        });
+    }
+
+    // 简易转义防止 XSS
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    // 切换到指定配置
+    function setActiveConfig(id) {
+        activeConfigId = id;
+        saveActiveId();
+        renderConfigList();
+        
+        // 将激活配置填入表单
+        const activeCfg = configs.find(c => c.id === id);
+        if (activeCfg) {
+            nameInput.value = activeCfg.name || '';
+            modelInput.value = activeCfg.model || '';
+            keyInput.value = activeCfg.key || '';
+            proxyInput.value = activeCfg.proxyUrl || '';
+            setStatus(`已切换到配置: ${activeCfg.name || '未命名'}`, false);
+        }
+    }
+
+    // 删除配置
+    function deleteConfig(id) {
+        if (!confirm('确定删除此配置吗？')) return;
+        
+        configs = configs.filter(c => c.id !== id);
+        saveConfigsToStorage();
+        
+        if (activeConfigId === id) {
+            if (configs.length > 0) {
+                setActiveConfig(configs[0].id);
+            } else {
+                activeConfigId = null;
+                saveActiveId();
+                nameInput.value = '';
+                modelInput.value = '';
+                keyInput.value = '';
+                proxyInput.value = '';
+            }
+        }
+        
+        renderConfigList();
+        setStatus('配置已删除', false);
+    }
+
+    // 新增配置
+    function addNewConfig() {
+        const name = nameInput.value.trim();
+        const model = modelInput.value.trim();
+        const key = keyInput.value.trim();
+        const proxyUrl = proxyInput.value.trim();
+        
+        if (!name || !model || !key || !proxyUrl) {
+            alert('请完整填写所有字段');
+            return false;
+        }
+        
+        const newConfig = {
+            id: Date.now() + Math.random().toString(36),
+            name, model, key, proxyUrl
+        };
+        
+        configs.push(newConfig);
+        saveConfigsToStorage();
+        
+        setActiveConfig(newConfig.id);
+        renderConfigList();
+        setStatus(`配置“${name}”已新增并激活`, false);
+        return true;
+    }
+
+    // 更新当前配置
+    function updateCurrentConfig() {
+        if (!activeConfigId) {
+            alert('没有激活的配置');
+            return;
+        }
+        
+        const name = nameInput.value.trim();
+        const model = modelInput.value.trim();
+        const key = keyInput.value.trim();
+        const proxyUrl = proxyInput.value.trim();
+        
+        if (!name || !model || !key || !proxyUrl) {
+            alert('请完整填写所有字段');
+            return;
+        }
+        
+        const index = configs.findIndex(c => c.id === activeConfigId);
+        if (index === -1) return;
+        
+        configs[index] = {
+            ...configs[index],
+            name, model, key, proxyUrl
+        };
+        
+        saveConfigsToStorage();
+        renderConfigList();
+        setStatus(`配置“${name}”已更新`, false);
+    }
+
+    // ---------- 对话历史 ----------
     function saveChatHistory() {
         const messages = [];
-        // 遍历 chatMessages 中的所有消息元素
         for (const msgEl of chatMessages.children) {
-            // 跳过加载中的临时消息
             if (msgEl.textContent === '⏳ 思考中...') continue;
-            
             const role = Array.from(msgEl.classList).find(c => 
                 c === 'user' || c === 'assistant' || c === 'system'
             );
             if (!role) continue;
-            
-            // 对于助手消息，我们保存原始 Markdown 文本（需要额外存储）
-            // 简单做法：直接从元素的 dataset 中读取原始内容
             const content = msgEl.dataset.rawContent || msgEl.textContent;
             messages.push({ role, content });
         }
-        localStorage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(messages));
+        localStorage.setItem(STORAGE_HISTORY, JSON.stringify(messages));
     }
 
-    function loadChatHistory() {
-        const saved = localStorage.getItem(STORAGE_KEY_HISTORY);
-        if (!saved) return;
-        
-        try {
-            const messages = JSON.parse(saved);
-            // 清空当前显示（但保留可能的系统欢迎语？这里我们完全替换）
-            chatMessages.innerHTML = '';
-            for (const msg of messages) {
-                // 使用 addMessage 来渲染，但要避免重复保存触发递归
-                _addMessageInternal(msg.role, msg.content);
-            }
-        } catch (e) {
-            console.warn('加载对话历史失败', e);
-        }
-    }
-
-    // 内部渲染方法（不触发保存，避免死循环）
     function _addMessageInternal(role, content) {
         const msgDiv = document.createElement('div');
         msgDiv.className = `message ${role}`;
@@ -83,22 +250,30 @@
             msgDiv.textContent = content;
         }
         
-        // 将原始内容存入 dataset，方便后续保存
         msgDiv.dataset.rawContent = content;
         chatMessages.appendChild(msgDiv);
         chatMessages.scrollTop = chatMessages.scrollHeight;
     }
 
-    // 对外暴露的添加消息方法（会触发保存）
     function addMessage(role, content) {
         _addMessageInternal(role, content);
-        saveChatHistory();  // 每次添加后保存
+        saveChatHistory();
     }
 
-    // 清空对话历史
+    function loadChatHistory() {
+        const saved = localStorage.getItem(STORAGE_HISTORY);
+        if (!saved) return;
+        try {
+            const messages = JSON.parse(saved);
+            chatMessages.innerHTML = '';
+            for (const msg of messages) {
+                _addMessageInternal(msg.role, msg.content);
+            }
+        } catch (e) {}
+    }
+
     function clearChatHistory() {
         chatMessages.innerHTML = '';
-        // 可选：加回一条系统提示
         const sysMsg = document.createElement('div');
         sysMsg.className = 'message system';
         sysMsg.textContent = '对话已清空。';
@@ -107,7 +282,7 @@
         saveChatHistory();
     }
 
-    // ---------- 原有功能（略作调整）----------
+    // ---------- 状态提示 ----------
     function setStatus(text, isError = false) {
         statusDiv.textContent = text;
         statusDiv.style.color = isError ? '#dc2626' : '#64748b';
@@ -116,58 +291,25 @@
         }
     }
 
-    function saveConfig() {
-        const config = {
-            name: nameInput.value.trim(),
-            model: modelInput.value.trim(),
-            key: keyInput.value.trim(),
-            proxyUrl: proxyInput.value.trim()
-        };
-
-        if (!config.key || !config.proxyUrl || !config.model) {
-            alert('请至少填写模型、API Key 和代理地址');
-            return false;
-        }
-
-        localStorage.setItem(STORAGE_KEY_CONFIG, JSON.stringify(config));
-        setStatus('✓ 配置已保存');
-        return true;
-    }
-
-    function loadConfigToForm() {
-        const saved = localStorage.getItem(STORAGE_KEY_CONFIG);
-        if (!saved) {
-            alert('没有已保存的配置');
-            return;
-        }
-        try {
-            const config = JSON.parse(saved);
-            nameInput.value = config.name || '';
-            modelInput.value = config.model || '';
-            keyInput.value = config.key || '';
-            proxyInput.value = config.proxyUrl || '';
-            setStatus('✓ 配置已加载');
-        } catch (e) {
-            alert('配置数据损坏');
-        }
-    }
-
+    // ---------- 发送请求 ----------
     async function sendMessage() {
-        const saved = localStorage.getItem(STORAGE_KEY_CONFIG);
-        if (!saved) {
-            alert('请先在左侧保存 API 配置');
+        if (!activeConfigId) {
+            alert('请先选择或新增一个配置');
             return;
         }
-
-        const config = JSON.parse(saved);
+        
+        const activeCfg = configs.find(c => c.id === activeConfigId);
+        if (!activeCfg) {
+            alert('配置不存在');
+            return;
+        }
+        
         const message = userInput.value.trim();
         if (!message) return;
 
-        // 显示用户消息
         addMessage('user', message);
         userInput.value = '';
         
-        // 显示临时加载消息
         const loadingMsg = document.createElement('div');
         loadingMsg.className = 'message assistant';
         loadingMsg.textContent = '⏳ 思考中...';
@@ -177,18 +319,18 @@
         setStatus('请求中...');
 
         const requestBody = {
-            model: config.model,
+            model: activeCfg.model,
             messages: [{ role: 'user', content: message }],
             stream: false,
             temperature: 0.7
         };
 
         try {
-            const response = await fetch(config.proxyUrl, {
+            const response = await fetch(activeCfg.proxyUrl, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${config.key}`
+                    'Authorization': `Bearer ${activeCfg.key}`
                 },
                 body: JSON.stringify(requestBody)
             });
@@ -199,8 +341,6 @@
             }
 
             const data = await response.json();
-            
-            // 移除加载消息
             loadingMsg.remove();
 
             let reply = '无法解析响应内容';
@@ -227,9 +367,40 @@
         }
     }
 
-    // 绑定事件
-    document.getElementById('saveConfigBtn').addEventListener('click', saveConfig);
-    document.getElementById('loadConfigBtn').addEventListener('click', loadConfigToForm);
+    // ---------- 初始化 ----------
+    function init() {
+        loadConfigs();
+        loadActiveId();
+        
+        // 渲染列表
+        renderConfigList();
+        
+        // 如果有激活配置，填充表单
+        if (activeConfigId) {
+            const activeCfg = configs.find(c => c.id === activeConfigId);
+            if (activeCfg) {
+                nameInput.value = activeCfg.name || '';
+                modelInput.value = activeCfg.model || '';
+                keyInput.value = activeCfg.key || '';
+                proxyInput.value = activeCfg.proxyUrl || '';
+            }
+        }
+        
+        // 加载对话历史
+        loadChatHistory();
+        if (chatMessages.children.length === 0) {
+            const sysMsg = document.createElement('div');
+            sysMsg.className = 'message system';
+            sysMsg.textContent = '在左侧选择或新增 API 配置，然后开始对话。';
+            sysMsg.dataset.rawContent = sysMsg.textContent;
+            chatMessages.appendChild(sysMsg);
+        }
+    }
+
+    // 事件绑定
+    document.getElementById('saveNewConfigBtn').addEventListener('click', addNewConfig);
+    document.getElementById('updateConfigBtn').addEventListener('click', updateCurrentConfig);
+    document.getElementById('clearChatBtn').addEventListener('click', clearChatHistory);
     sendBtn.addEventListener('click', sendMessage);
     userInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
@@ -238,34 +409,5 @@
         }
     });
 
-    // 可选：添加清空对话按钮（需要在 HTML 中添加对应按钮）
-    document.getElementById('clearChatBtn')?.addEventListener('click', clearChatHistory);
-
-    // 初始化
-    (function init() {
-        // 加载配置预填
-        const savedConfig = localStorage.getItem(STORAGE_KEY_CONFIG);
-        if (savedConfig) {
-            try {
-                const config = JSON.parse(savedConfig);
-                nameInput.value = config.name || '';
-                modelInput.value = config.model || '';
-                proxyInput.value = config.proxyUrl || '';
-                setStatus('ℹ️ 检测到已保存配置，点击“加载”填入 API Key', false);
-            } catch (e) {}
-        }
-
-        // 加载对话历史
-        loadChatHistory();
-        
-        // 如果没有任何消息，显示一条默认欢迎语
-        if (chatMessages.children.length === 0) {
-            const sysMsg = document.createElement('div');
-            sysMsg.className = 'message system';
-            sysMsg.textContent = '在左侧填写 API 配置并保存，然后开始对话。';
-            sysMsg.dataset.rawContent = '在左侧填写 API 配置并保存，然后开始对话。';
-            chatMessages.appendChild(sysMsg);
-        }
-    })();
-
+    init();
 })();

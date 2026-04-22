@@ -3,21 +3,30 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI 对话 · 双栏布局</title>
+    <title>AI 对话 · 多配置管理</title>
     <link rel="stylesheet" href="style.css">
-    <!-- Markdown 解析库 -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <!-- 代码高亮库 (可选) -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/github.min.css">
     <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/core.min.js"></script>
 </head>
 <body>
     <div class="app">
-        <!-- 左侧：配置面板 (1/3) -->
+        <!-- 左侧：配置管理面板 -->
         <aside class="sidebar">
             <h2>⚙️ API 配置</h2>
+            
+            <!-- 配置列表 -->
+            <div class="config-list-container">
+                <label>已保存的配置</label>
+                <ul id="configList" class="config-list">
+                    <!-- 动态生成 -->
+                </ul>
+                <p id="noConfigMsg" class="hint">暂无配置，请新增一个。</p>
+            </div>
+
+            <!-- 配置编辑表单 -->
             <div class="config-form">
-                <label>名称 (可选)</label>
+                <label>名称</label>
                 <input type="text" id="configName" placeholder="例如: 翻译助手">
 
                 <label>模型</label>
@@ -30,21 +39,21 @@
                 <input type="text" id="proxyUrl" placeholder="https://api.example.com/v1/chat/completions">
 
                 <div class="button-group">
-                    <button id="saveConfigBtn">💾 保存配置</button>
-                    <button id="loadConfigBtn" class="secondary">📂 加载</button>
+                    <button id="saveNewConfigBtn">➕ 新增</button>
+                    <button id="updateConfigBtn" class="secondary">✏️ 更新</button>
                 </div>
-                <p class="hint">配置仅保存在你的浏览器本地。</p>
+                <p class="hint">配置保存在浏览器本地。点击列表项可切换激活。</p>
             </div>
         </aside>
 
-        <!-- 右侧：对话区域 (2/3) -->
+        <!-- 右侧：对话区域 -->
         <main class="chat-area">
             <h2 style="display: flex; justify-content: space-between;">
                 💬 对话
                 <button id="clearChatBtn" style="width: auto; padding: 0.3rem 1rem; background: #e2e8f0; color: #1e293b;">🗑️ 清空对话</button>
             </h2>
             <div id="chatMessages" class="chat-messages">
-                <div class="message system">在左侧填写 API 配置并保存，然后开始对话。</div>
+                <div class="message system">在左侧选择或新增 API 配置，然后开始对话。</div>
             </div>
             <div class="chat-input-area">
                 <textarea id="userInput" rows="2" placeholder="输入消息..."></textarea>
