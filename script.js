@@ -28,15 +28,40 @@
     const userInput = document.getElementById('userInput');
     const sendBtn = document.getElementById('sendBtn');
     const statusDiv = document.getElementById('status');
+    const themeToggleBtn = document.getElementById('themeToggleBtn');
 
     // 存储键
-    const STORAGE_CONFIGS = 'ai_configs_list_v1';    // 配置数组
+    const STORAGE_CONFIGS = 'ai_configs_list_v1';
     const STORAGE_ACTIVE_ID = 'ai_active_config_id_v1';
     const STORAGE_HISTORY = 'ai_chat_history_v1';
+    const THEME_STORAGE_KEY = 'app_theme_preference';
 
     // 状态
-    let configs = [];                // 所有配置 { id, name, model, key, proxyUrl }
+    let configs = [];
     let activeConfigId = null;
+
+    // ---------- 主题切换 ----------
+    function applyTheme(theme) {
+        if (theme === 'dark') {
+            document.body.classList.add('dark-theme');
+            if (themeToggleBtn) themeToggleBtn.innerHTML = '☀️ 浅色';
+        } else {
+            document.body.classList.remove('dark-theme');
+            if (themeToggleBtn) themeToggleBtn.innerHTML = '🌙 深色';
+        }
+    }
+
+    function toggleTheme() {
+        const isDark = document.body.classList.contains('dark-theme');
+        const newTheme = isDark ? 'light' : 'dark';
+        applyTheme(newTheme);
+        localStorage.setItem(THEME_STORAGE_KEY, newTheme);
+    }
+
+    function loadTheme() {
+        const savedTheme = localStorage.getItem(THEME_STORAGE_KEY);
+        applyTheme(savedTheme === 'dark' ? 'dark' : 'light');
+    }
 
     // ---------- 配置管理 ----------
     function loadConfigs() {
@@ -48,7 +73,6 @@
                 configs = [];
             }
         }
-        // 确保每个配置都有 id（兼容旧数据）
         configs = configs.map(cfg => {
             if (!cfg.id) cfg.id = Date.now() + Math.random().toString(36);
             return cfg;
@@ -78,7 +102,6 @@
         }
     }
 
-    // 渲染配置列表
     function renderConfigList() {
         configListEl.innerHTML = '';
         if (configs.length === 0) {
@@ -90,9 +113,7 @@
         configs.forEach(cfg => {
             const li = document.createElement('li');
             li.dataset.id = cfg.id;
-            if (cfg.id === activeConfigId) {
-                li.classList.add('active');
-            }
+            if (cfg.id === activeConfigId) li.classList.add('active');
 
             const infoSpan = document.createElement('span');
             infoSpan.innerHTML = `<span class="config-name">${escapeHtml(cfg.name || '未命名')}</span><span class="config-model">${escapeHtml(cfg.model || '')}</span>`;
@@ -108,114 +129,79 @@
 
             li.appendChild(infoSpan);
             li.appendChild(delBtn);
-            
-            li.addEventListener('click', () => {
-                setActiveConfig(cfg.id);
-            });
-            
+            li.addEventListener('click', () => setActiveConfig(cfg.id));
             configListEl.appendChild(li);
         });
     }
 
-    // 简易转义防止 XSS
     function escapeHtml(text) {
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
     }
 
-    // 切换到指定配置
     function setActiveConfig(id) {
         activeConfigId = id;
         saveActiveId();
         renderConfigList();
-        
-        // 将激活配置填入表单
         const activeCfg = configs.find(c => c.id === id);
         if (activeCfg) {
             nameInput.value = activeCfg.name || '';
             modelInput.value = activeCfg.model || '';
             keyInput.value = activeCfg.key || '';
             proxyInput.value = activeCfg.proxyUrl || '';
-            setStatus(`已切换到配置: ${activeCfg.name || '未命名'}`, false);
+            setStatus(`已切换到: ${activeCfg.name || '未命名'}`, false);
         }
     }
 
-    // 删除配置
     function deleteConfig(id) {
         if (!confirm('确定删除此配置吗？')) return;
-        
         configs = configs.filter(c => c.id !== id);
         saveConfigsToStorage();
-        
         if (activeConfigId === id) {
             if (configs.length > 0) {
                 setActiveConfig(configs[0].id);
             } else {
                 activeConfigId = null;
                 saveActiveId();
-                nameInput.value = '';
-                modelInput.value = '';
-                keyInput.value = '';
-                proxyInput.value = '';
+                nameInput.value = modelInput.value = keyInput.value = proxyInput.value = '';
             }
         }
-        
         renderConfigList();
         setStatus('配置已删除', false);
     }
 
-    // 新增配置
     function addNewConfig() {
         const name = nameInput.value.trim();
         const model = modelInput.value.trim();
         const key = keyInput.value.trim();
         const proxyUrl = proxyInput.value.trim();
-        
         if (!name || !model || !key || !proxyUrl) {
             alert('请完整填写所有字段');
             return false;
         }
-        
-        const newConfig = {
-            id: Date.now() + Math.random().toString(36),
-            name, model, key, proxyUrl
-        };
-        
+        const newConfig = { id: Date.now() + Math.random().toString(36), name, model, key, proxyUrl };
         configs.push(newConfig);
         saveConfigsToStorage();
-        
         setActiveConfig(newConfig.id);
         renderConfigList();
         setStatus(`配置“${name}”已新增并激活`, false);
         return true;
     }
 
-    // 更新当前配置
     function updateCurrentConfig() {
-        if (!activeConfigId) {
-            alert('没有激活的配置');
-            return;
-        }
-        
+        if (!activeConfigId) { alert('没有激活的配置'); return; }
         const name = nameInput.value.trim();
         const model = modelInput.value.trim();
         const key = keyInput.value.trim();
         const proxyUrl = proxyInput.value.trim();
-        
         if (!name || !model || !key || !proxyUrl) {
             alert('请完整填写所有字段');
             return;
         }
-        
         const index = configs.findIndex(c => c.id === activeConfigId);
         if (index === -1) return;
-        
-        configs[index] = {
-            ...configs[index],
-            name, model, key, proxyUrl
-        };
-        
+        configs[index] = { ...configs[index], name, model, key, proxyUrl };
         saveConfigsToStorage();
         renderConfigList();
         setStatus(`配置“${name}”已更新`, false);
@@ -226,9 +212,7 @@
         const messages = [];
         for (const msgEl of chatMessages.children) {
             if (msgEl.textContent === '⏳ 思考中...') continue;
-            const role = Array.from(msgEl.classList).find(c => 
-                c === 'user' || c === 'assistant' || c === 'system'
-            );
+            const role = Array.from(msgEl.classList).find(c => c === 'user' || c === 'assistant' || c === 'system');
             if (!role) continue;
             const content = msgEl.dataset.rawContent || msgEl.textContent;
             messages.push({ role, content });
@@ -239,17 +223,11 @@
     function _addMessageInternal(role, content) {
         const msgDiv = document.createElement('div');
         msgDiv.className = `message ${role}`;
-        
         if (role === 'assistant' && typeof marked !== 'undefined') {
-            try {
-                msgDiv.innerHTML = marked.parse(content);
-            } catch (e) {
-                msgDiv.textContent = content;
-            }
+            try { msgDiv.innerHTML = marked.parse(content); } catch (e) { msgDiv.textContent = content; }
         } else {
             msgDiv.textContent = content;
         }
-        
         msgDiv.dataset.rawContent = content;
         chatMessages.appendChild(msgDiv);
         chatMessages.scrollTop = chatMessages.scrollHeight;
@@ -266,9 +244,7 @@
         try {
             const messages = JSON.parse(saved);
             chatMessages.innerHTML = '';
-            for (const msg of messages) {
-                _addMessageInternal(msg.role, msg.content);
-            }
+            for (const msg of messages) _addMessageInternal(msg.role, msg.content);
         } catch (e) {}
     }
 
@@ -277,7 +253,7 @@
         const sysMsg = document.createElement('div');
         sysMsg.className = 'message system';
         sysMsg.textContent = '对话已清空。';
-        sysMsg.dataset.rawContent = '对话已清空。';
+        sysMsg.dataset.rawContent = sysMsg.textContent;
         chatMessages.appendChild(sysMsg);
         saveChatHistory();
     }
@@ -285,25 +261,15 @@
     // ---------- 状态提示 ----------
     function setStatus(text, isError = false) {
         statusDiv.textContent = text;
-        statusDiv.style.color = isError ? '#dc2626' : '#64748b';
-        if (!isError) {
-            setTimeout(() => { statusDiv.textContent = ''; }, 3000);
-        }
+        statusDiv.style.color = isError ? '#dc2626' : 'var(--text-muted)';
+        if (!isError) setTimeout(() => statusDiv.textContent = '', 3000);
     }
 
     // ---------- 发送请求 ----------
     async function sendMessage() {
-        if (!activeConfigId) {
-            alert('请先选择或新增一个配置');
-            return;
-        }
-        
+        if (!activeConfigId) { alert('请先选择或新增一个配置'); return; }
         const activeCfg = configs.find(c => c.id === activeConfigId);
-        if (!activeCfg) {
-            alert('配置不存在');
-            return;
-        }
-        
+        if (!activeCfg) { alert('配置不存在'); return; }
         const message = userInput.value.trim();
         if (!message) return;
 
@@ -315,7 +281,6 @@
         loadingMsg.textContent = '⏳ 思考中...';
         chatMessages.appendChild(loadingMsg);
         chatMessages.scrollTop = chatMessages.scrollHeight;
-        
         setStatus('请求中...');
 
         const requestBody = {
@@ -328,54 +293,35 @@
         try {
             const response = await fetch(activeCfg.proxyUrl, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${activeCfg.key}`
-                },
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${activeCfg.key}` },
                 body: JSON.stringify(requestBody)
             });
-
-            if (!response.ok) {
-                const errText = await response.text();
-                throw new Error(`HTTP ${response.status}: ${errText}`);
-            }
-
+            if (!response.ok) throw new Error(`HTTP ${response.status}: ${await response.text()}`);
             const data = await response.json();
             loadingMsg.remove();
 
-            let reply = '无法解析响应内容';
-            if (data.choices?.[0]?.message?.content) {
-                reply = data.choices[0].message.content;
-            } else if (data.content) {
-                reply = data.content;
-            } else if (data.reply) {
-                reply = data.reply;
-            } else if (data.message) {
-                reply = data.message;
-            } else {
-                reply = JSON.stringify(data);
-            }
+            let reply = '无法解析响应';
+            if (data.choices?.[0]?.message?.content) reply = data.choices[0].message.content;
+            else if (data.content) reply = data.content;
+            else if (data.reply) reply = data.reply;
+            else if (data.message) reply = data.message;
+            else reply = JSON.stringify(data);
 
             addMessage('assistant', reply);
             setStatus('✓ 请求成功');
-
         } catch (error) {
             loadingMsg.remove();
             addMessage('system', `❌ 请求失败：${error.message}`);
             setStatus(`✗ ${error.message}`, true);
-            console.error('API Error:', error);
         }
     }
 
     // ---------- 初始化 ----------
     function init() {
+        loadTheme();
         loadConfigs();
         loadActiveId();
-        
-        // 渲染列表
         renderConfigList();
-        
-        // 如果有激活配置，填充表单
         if (activeConfigId) {
             const activeCfg = configs.find(c => c.id === activeConfigId);
             if (activeCfg) {
@@ -385,8 +331,6 @@
                 proxyInput.value = activeCfg.proxyUrl || '';
             }
         }
-        
-        // 加载对话历史
         loadChatHistory();
         if (chatMessages.children.length === 0) {
             const sysMsg = document.createElement('div');
@@ -401,6 +345,7 @@
     document.getElementById('saveNewConfigBtn').addEventListener('click', addNewConfig);
     document.getElementById('updateConfigBtn').addEventListener('click', updateCurrentConfig);
     document.getElementById('clearChatBtn').addEventListener('click', clearChatHistory);
+    if (themeToggleBtn) themeToggleBtn.addEventListener('click', toggleTheme);
     sendBtn.addEventListener('click', sendMessage);
     userInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {

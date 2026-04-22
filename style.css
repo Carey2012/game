@@ -1,3 +1,66 @@
+/* ========== CSS 变量：浅色主题（默认） ========== */
+:root {
+    --bg-body: #f4f6f9;
+    --bg-sidebar: #fafbfc;
+    --bg-main: #ffffff;
+    --border-color: #e2e8f0;
+    --text-primary: #0f172a;
+    --text-secondary: #475569;
+    --text-muted: #64748b;
+    --input-bg: #ffffff;
+    --input-border: #cbd5e1;
+    --button-primary-bg: #3b82f6;
+    --button-primary-text: #ffffff;
+    --button-secondary-bg: #e2e8f0;
+    --button-secondary-text: #1e293b;
+    --message-user-bg: #3b82f6;
+    --message-user-text: #ffffff;
+    --message-assistant-bg: #f1f5f9;
+    --message-assistant-text: #0f172a;
+    --message-system-bg: #fef3c7;
+    --message-system-text: #92400e;
+    --code-bg: rgba(0,0,0,0.05);
+    --pre-bg: #1e1e2f;
+    --pre-text: #e2e8f0;
+    --shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+    --delete-btn-color: #94a3b8;
+    --delete-btn-hover: #dc2626;
+    --active-item-bg: #dbeafe;
+    --active-item-border: #3b82f6;
+}
+
+/* ========== 深色主题变量 ========== */
+body.dark-theme {
+    --bg-body: #0f172a;
+    --bg-sidebar: #1e293b;
+    --bg-main: #0f172a;
+    --border-color: #334155;
+    --text-primary: #f1f5f9;
+    --text-secondary: #cbd5e1;
+    --text-muted: #94a3b8;
+    --input-bg: #1e293b;
+    --input-border: #475569;
+    --button-primary-bg: #3b82f6;
+    --button-primary-text: #ffffff;
+    --button-secondary-bg: #334155;
+    --button-secondary-text: #f1f5f9;
+    --message-user-bg: #2563eb;
+    --message-user-text: #ffffff;
+    --message-assistant-bg: #1e293b;
+    --message-assistant-text: #e2e8f0;
+    --message-system-bg: #422006;
+    --message-system-text: #fde68a;
+    --code-bg: rgba(255,255,255,0.1);
+    --pre-bg: #0f172a;
+    --pre-text: #cbd5e1;
+    --shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    --delete-btn-color: #64748b;
+    --delete-btn-hover: #ef4444;
+    --active-item-bg: #1e3a5f;
+    --active-item-border: #3b82f6;
+}
+
+/* ========== 基础样式 ========== */
 * {
     margin: 0;
     padding: 0;
@@ -6,12 +69,13 @@
 
 body {
     font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-    background: #f4f6f9;
+    background: var(--bg-body);
+    color: var(--text-primary);
     height: 100vh;
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #1e1e2f;
+    transition: background 0.2s, color 0.2s;
 }
 
 .app {
@@ -19,28 +83,31 @@ body {
     width: 1200px;
     max-width: 95vw;
     height: 90vh;
-    background: white;
+    background: var(--bg-main);
     border-radius: 20px;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+    box-shadow: var(--shadow);
     overflow: hidden;
+    transition: background 0.2s, box-shadow 0.2s;
 }
 
-/* 左侧边栏 - 1/3 宽度 */
+/* ========== 左侧边栏 ========== */
 .sidebar {
     width: 33.333%;
-    background: #fafbfc;
-    border-right: 1px solid #e2e8f0;
+    background: var(--bg-sidebar);
+    border-right: 1px solid var(--border-color);
     padding: 1.8rem 1.5rem;
     overflow-y: auto;
+    transition: background 0.2s, border-color 0.2s;
 }
 
 .sidebar h2 {
     font-size: 1.4rem;
     font-weight: 600;
     margin-bottom: 1.8rem;
-    color: #0f172a;
+    color: var(--text-primary);
 }
-/* 配置列表区域 */
+
+/* 配置列表 */
 .config-list-container {
     margin-bottom: 2rem;
 }
@@ -48,7 +115,7 @@ body {
 .config-list-container label {
     font-size: 0.85rem;
     font-weight: 600;
-    color: #475569;
+    color: var(--text-secondary);
     display: block;
     margin-bottom: 0.5rem;
 }
@@ -59,19 +126,20 @@ body {
     padding: 0;
     max-height: 180px;
     overflow-y: auto;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--border-color);
     border-radius: 12px;
-    background: white;
+    background: var(--input-bg);
 }
 
 .config-list li {
     padding: 0.7rem 1rem;
-    border-bottom: 1px solid #e2e8f0;
+    border-bottom: 1px solid var(--border-color);
     display: flex;
     align-items: center;
     justify-content: space-between;
     cursor: pointer;
     transition: background 0.1s;
+    color: var(--text-primary);
 }
 
 .config-list li:last-child {
@@ -79,29 +147,28 @@ body {
 }
 
 .config-list li:hover {
-    background: #f1f5f9;
+    background: var(--message-assistant-bg);
 }
 
 .config-list li.active {
-    background: #dbeafe;
-    border-left: 4px solid #3b82f6;
+    background: var(--active-item-bg);
+    border-left: 4px solid var(--active-item-border);
 }
 
 .config-name {
     font-weight: 500;
-    color: #0f172a;
 }
 
 .config-model {
     font-size: 0.7rem;
-    color: #64748b;
+    color: var(--text-muted);
     margin-left: 0.5rem;
 }
 
 .delete-config-btn {
     background: none;
     border: none;
-    color: #94a3b8;
+    color: var(--delete-btn-color);
     font-size: 1.2rem;
     cursor: pointer;
     padding: 0 0.3rem;
@@ -112,32 +179,35 @@ body {
 }
 
 .delete-config-btn:hover {
-    color: #dc2626;
-    background: #fee2e2;
+    color: var(--delete-btn-hover);
+    background: rgba(220, 38, 38, 0.1);
 }
 
 #noConfigMsg {
     margin-top: 0.5rem;
+    color: var(--text-muted);
 }
 
+/* 配置表单 */
 .config-form label {
     display: block;
     font-size: 0.85rem;
     font-weight: 500;
     margin-bottom: 0.3rem;
-    color: #475569;
+    color: var(--text-secondary);
 }
 
 .config-form input {
     width: 100%;
     padding: 0.7rem 0.9rem;
     margin-bottom: 1.2rem;
-    border: 1px solid #cbd5e1;
+    border: 1px solid var(--input-border);
     border-radius: 12px;
     font-size: 0.9rem;
     font-family: 'SF Mono', Monaco, monospace;
-    transition: border 0.15s, box-shadow 0.15s;
-    background: white;
+    background: var(--input-bg);
+    color: var(--text-primary);
+    transition: border 0.15s, box-shadow 0.15s, background 0.2s, color 0.2s;
 }
 
 .config-form input:focus {
@@ -147,7 +217,7 @@ body {
 }
 
 .config-form input::placeholder {
-    color: #94a3b8;
+    color: var(--text-muted);
     font-family: system-ui;
 }
 
@@ -158,53 +228,49 @@ body {
 }
 
 button {
-    background: #3b82f6;
-    color: white;
+    background: var(--button-primary-bg);
+    color: var(--button-primary-text);
     border: none;
     padding: 0.7rem 1.2rem;
     border-radius: 30px;
     font-size: 0.9rem;
     font-weight: 500;
     cursor: pointer;
-    transition: background 0.15s, transform 0.05s;
-    border: 1px solid transparent;
+    transition: background 0.15s, transform 0.05s, opacity 0.2s;
     flex: 1;
 }
 
 button:hover {
-    background: #2563eb;
+    opacity: 0.9;
 }
 
 button.secondary {
-    background: #e2e8f0;
-    color: #1e293b;
-}
-
-button.secondary:hover {
-    background: #cbd5e1;
+    background: var(--button-secondary-bg);
+    color: var(--button-secondary-text);
 }
 
 .hint {
     font-size: 0.75rem;
-    color: #64748b;
+    color: var(--text-muted);
     margin-top: 0.5rem;
     text-align: center;
 }
 
-/* 右侧对话区 - 2/3 宽度 */
+/* ========== 右侧对话区 ========== */
 .chat-area {
     width: 66.666%;
     display: flex;
     flex-direction: column;
     padding: 1.8rem 1.8rem 1.5rem;
-    background: white;
+    background: var(--bg-main);
+    transition: background 0.2s;
 }
 
 .chat-area h2 {
     font-size: 1.4rem;
     font-weight: 600;
     margin-bottom: 1rem;
-    color: #0f172a;
+    color: var(--text-primary);
 }
 
 .chat-messages {
@@ -228,28 +294,28 @@ button.secondary:hover {
 
 .message.user {
     align-self: flex-end;
-    background: #3b82f6;
-    color: white;
+    background: var(--message-user-bg);
+    color: var(--message-user-text);
     border-bottom-right-radius: 4px;
 }
 
 .message.assistant {
     align-self: flex-start;
-    background: #f1f5f9;
-    color: #0f172a;
+    background: var(--message-assistant-bg);
+    color: var(--message-assistant-text);
     border-bottom-left-radius: 4px;
 }
 
 .message.system {
     align-self: center;
-    background: #fef3c7;
-    color: #92400e;
+    background: var(--message-system-bg);
+    color: var(--message-system-text);
     font-size: 0.85rem;
     max-width: 90%;
     text-align: center;
 }
 
-/* Markdown 渲染后的内容样式 */
+/* Markdown 样式 */
 .message.assistant p {
     margin-bottom: 0.75rem;
 }
@@ -263,15 +329,15 @@ button.secondary:hover {
     margin-bottom: 0.25rem;
 }
 .message.assistant code {
-    background: rgba(0,0,0,0.05);
+    background: var(--code-bg);
     padding: 0.2rem 0.4rem;
     border-radius: 6px;
     font-family: 'SF Mono', Monaco, monospace;
     font-size: 0.85em;
 }
 .message.assistant pre {
-    background: #1e1e2f;
-    color: #e2e8f0;
+    background: var(--pre-bg);
+    color: var(--pre-text);
     padding: 1rem;
     border-radius: 12px;
     overflow-x: auto;
@@ -286,15 +352,12 @@ button.secondary:hover {
     border-left: 4px solid #3b82f6;
     padding-left: 1rem;
     margin: 0.75rem 0;
-    color: #475569;
+    color: var(--text-secondary);
     font-style: italic;
 }
 .message.assistant a {
-    color: #2563eb;
+    color: #3b82f6;
     text-decoration: none;
-}
-.message.assistant a:hover {
-    text-decoration: underline;
 }
 .message.assistant table {
     border-collapse: collapse;
@@ -302,14 +365,15 @@ button.secondary:hover {
     width: 100%;
 }
 .message.assistant th, .message.assistant td {
-    border: 1px solid #cbd5e1;
+    border: 1px solid var(--border-color);
     padding: 0.4rem 0.6rem;
     text-align: left;
 }
 .message.assistant th {
-    background: #e2e8f0;
+    background: var(--message-assistant-bg);
 }
 
+/* 输入区域 */
 .chat-input-area {
     display: flex;
     gap: 0.8rem;
@@ -320,12 +384,14 @@ button.secondary:hover {
 .chat-input-area textarea {
     flex: 1;
     padding: 0.8rem 1rem;
-    border: 1px solid #cbd5e1;
+    border: 1px solid var(--input-border);
     border-radius: 18px;
     font-size: 0.95rem;
     font-family: inherit;
     resize: none;
-    background: #fafbfc;
+    background: var(--input-bg);
+    color: var(--text-primary);
+    transition: border 0.15s, box-shadow 0.15s, background 0.2s, color 0.2s;
 }
 
 .chat-input-area textarea:focus {
@@ -341,7 +407,24 @@ button.secondary:hover {
 
 .status {
     font-size: 0.8rem;
-    color: #64748b;
+    color: var(--text-muted);
     margin-top: 0.5rem;
     min-height: 1.2rem;
+    transition: color 0.2s;
+}
+
+/* 滚动条美化 */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: var(--text-muted);
 }
