@@ -265,7 +265,7 @@
         if (!isError) setTimeout(() => statusDiv.textContent = '', 3000);
     }
 
-    // ---------- 发送请求 ----------
+    // ---------- 发送请求（支持流式 + 打字机）----------
     async function sendMessage() {
         if (!activeConfigId) { alert('请先选择或新增一个配置'); return; }
         const activeCfg = configs.find(c => c.id === activeConfigId);
@@ -276,44 +276,119 @@
         addMessage('user', message);
         userInput.value = '';
         
-        const loadingMsg = document.createElement('div');
-        loadingMsg.className = 'message assistant';
-        loadingMsg.textContent = '⏳ 思考中...';
-        chatMessages.appendChild(loadingMsg);
+        const assistantMsgDiv = document.createElement('div');
+        assistantMsgDiv.className = 'message assistant';
+        assistantMsgDiv.textContent = '⏳ 思考中...';
+        chatMessages.appendChild(assistantMsgDiv);
         chatMessages.scrollTop = chatMessages.scrollHeight;
+        
         setStatus('请求中...');
 
         const requestBody = {
             model: activeCfg.model,
             messages: [{ role: 'user', content: message }],
-            stream: false,
+            stream: true,
             temperature: 0.7
         };
 
         try {
             const response = await fetch(activeCfg.proxyUrl, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${activeCfg.key}` },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${activeCfg.key}`
+                },
                 body: JSON.stringify(requestBody)
             });
-            if (!response.ok) throw new Error(`HTTP ${response.status}: ${await response.text()}`);
-            const data = await response.json();
-            loadingMsg.remove();
 
-            let reply = '无法解析响应';
-            if (data.choices?.[0]?.message?.content) reply = data.choices[0].message.content;
-            else if (data.content) reply = data.content;
-            else if (data.reply) reply = data.reply;
-            else if (data.message) reply = data.message;
-            else reply = JSON.stringify(data);
+            if (!response.ok) {
+                const errText = await response.text();
+                throw new Error(`HTTP ${response.status}: ${errText}`);
+            }
 
-            addMessage('assistant', reply);
+            const contentType = response.headers.get('content-type') || '';
+            if (contentType.includes('text/event-stream') || contentType.includes('application/x-ndjson')) {
+                await handleStreamResponse(response, assistantMsgDiv);
+            } else {
+                const data = await response.json();
+                let fullReply = extractReplyContent(data);
+                assistantMsgDiv.textContent = '';
+                await typewriterEffect(assistantMsgDiv, fullReply);
+            }
+
+            assistantMsgDiv.dataset.rawContent = assistantMsgDiv.textContent;
+            if (typeof marked !== 'undefined') {
+                try {
+                    assistantMsgDiv.innerHTML = marked.parse(assistantMsgDiv.dataset.rawContent);
+                } catch (e) {}
+            }
+            saveChatHistory();
             setStatus('✓ 请求成功');
+
         } catch (error) {
-            loadingMsg.remove();
+            assistantMsgDiv.remove();
             addMessage('system', `❌ 请求失败：${error.message}`);
             setStatus(`✗ ${error.message}`, true);
+            console.error('API Error:', error);
         }
+    }
+
+    async function handleStreamResponse(response, msgElement) {
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let fullText = '';
+        msgElement.textContent = '';
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            
+            const chunk = decoder.decode(value);
+            const lines = chunk.split('\n');
+            
+            for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                    const dataStr = line.slice(6);
+                    if (dataStr === '[DONE]') continue;
+                    try {
+                        const json = JSON.parse(dataStr);
+                        const delta = json.choices?.[0]?.delta?.content;
+                        if (delta) {
+                            fullText += delta;
+                            msgElement.textContent = fullText;
+                            chatMessages.scrollTop = chatMessages.scrollHeight;
+                        }
+                    } catch (e) {}
+                }
+            }
+        }
+        msgElement.dataset.rawContent = fullText;
+    }
+
+    function typewriterEffect(element, text, speed = 20) {
+        return new Promise((resolve) => {
+            let i = 0;
+            element.textContent = '';
+            function type() {
+                if (i < text.length) {
+                    element.textContent += text.charAt(i);
+                    i++;
+                    chatMessages.scrollTop = chatMessages.scrollHeight;
+                    setTimeout(type, speed);
+                } else {
+                    resolve();
+                }
+            }
+            type();
+        });
+    }
+
+    function extractReplyContent(data) {
+        if (data.choices?.[0]?.message?.content) return data.choices[0].message.content;
+        if (data.content) return data.content;
+        if (data.reply) return data.reply;
+        if (data.message) return data.message;
+        return JSON.stringify(data);
     }
 
     // ---------- 初始化 ----------
