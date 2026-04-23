@@ -333,10 +333,12 @@
         }
     }
 
+    // 处理流式响应，按行实时渲染 Markdown
     async function handleStreamResponse(response, msgElement) {
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let fullText = '';
+        let buffer = '';
         msgElement.textContent = '';
 
         while (true) {
@@ -346,7 +348,8 @@
             const chunk = decoder.decode(value);
             const lines = chunk.split('\n');
             
-            for (const line of lines) {
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i];
                 if (line.startsWith('data: ')) {
                     const dataStr = line.slice(6);
                     if (dataStr === '[DONE]') continue;
@@ -355,32 +358,75 @@
                         const delta = json.choices?.[0]?.delta?.content;
                         if (delta) {
                             fullText += delta;
-                            msgElement.textContent = fullText;
+                            buffer += delta;
+                            
+                            // 如果遇到换行符，认为当前行结束，可以渲染缓冲区内容
+                            if (delta.includes('\n')) {
+                                // 将缓冲区内容渲染为 Markdown，但保留未完成的行
+                                const lastNewlineIndex = buffer.lastIndexOf('\n');
+                                const completedPart = buffer.substring(0, lastNewlineIndex + 1);
+                                const remainingPart = buffer.substring(lastNewlineIndex + 1);
+                                
+                                // 渲染已完成部分
+                                if (completedPart) {
+                                    const rendered = marked.parse(completedPart);
+                                    // 将渲染后的 HTML 与未完成纯文本拼接
+                                    msgElement.innerHTML = rendered + escapeHtml(remainingPart);
+                                } else {
+                                    msgElement.innerHTML = marked.parse(buffer) || '';
+                                }
+                            } else {
+                                // 没有换行，仍然只显示纯文本（或部分渲染，这里保持纯文本避免闪烁）
+                                msgElement.textContent = fullText;
+                            }
                             chatMessages.scrollTop = chatMessages.scrollHeight;
                         }
                     } catch (e) {}
                 }
             }
         }
+        
+        // 流结束，最终渲染全部 Markdown
+        msgElement.innerHTML = marked.parse(fullText) || '';
         msgElement.dataset.rawContent = fullText;
     }
 
+    // 模拟打字机（降级方案），同样按行渲染
     function typewriterEffect(element, text, speed = 20) {
         return new Promise((resolve) => {
             let i = 0;
             element.textContent = '';
+            let buffer = '';
             function type() {
                 if (i < text.length) {
-                    element.textContent += text.charAt(i);
+                    const char = text.charAt(i);
+                    buffer += char;
+                    element.textContent += char;  // 先纯文本追加
                     i++;
+                    
+                    // 如果遇到换行，尝试渲染已完成的行
+                    if (char === '\n') {
+                        const rendered = marked.parse(buffer);
+                        element.innerHTML = rendered;
+                    }
+                    
                     chatMessages.scrollTop = chatMessages.scrollHeight;
                     setTimeout(type, speed);
                 } else {
+                    // 最终渲染
+                    element.innerHTML = marked.parse(text) || '';
                     resolve();
                 }
             }
             type();
         });
+    }
+
+    // 辅助：转义 HTML 特殊字符
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
     }
 
     function extractReplyContent(data) {
