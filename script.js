@@ -1,11 +1,11 @@
 (function(){
     'use strict';
 
-    // 配置 marked
+    // ---------- 配置 marked（安全 + 标准换行）----------
     if (typeof marked !== 'undefined') {
         marked.setOptions({
-            breaks: true,
             gfm: true,
+            sanitize: true,
             highlight: function(code, lang) {
                 if (typeof hljs !== 'undefined' && lang && hljs.getLanguage(lang)) {
                     try {
@@ -63,15 +63,11 @@
         applyTheme(savedTheme === 'dark' ? 'dark' : 'light');
     }
 
-    // ---------- 配置管理 ----------
+    // ---------- 配置管理（代码不变） ----------
     function loadConfigs() {
         const saved = localStorage.getItem(STORAGE_CONFIGS);
         if (saved) {
-            try {
-                configs = JSON.parse(saved);
-            } catch (e) {
-                configs = [];
-            }
+            try { configs = JSON.parse(saved); } catch (e) { configs = []; }
         }
         configs = configs.map(cfg => {
             if (!cfg.id) cfg.id = Date.now() + Math.random().toString(36);
@@ -224,7 +220,11 @@
         const msgDiv = document.createElement('div');
         msgDiv.className = `message ${role}`;
         if (role === 'assistant' && typeof marked !== 'undefined') {
-            try { msgDiv.innerHTML = marked.parse(content); } catch (e) { msgDiv.textContent = content; }
+            try {
+                msgDiv.innerHTML = marked.parse(content);
+            } catch (e) {
+                msgDiv.textContent = content;
+            }
         } else {
             msgDiv.textContent = content;
         }
@@ -261,11 +261,35 @@
     // ---------- 状态提示 ----------
     function setStatus(text, isError = false) {
         statusDiv.textContent = text;
-        statusDiv.style.color = isError ? '#dc2626' : 'var(--text-muted)';
+        const style = getComputedStyle(document.body);
+        const mutedColor = style.getPropertyValue('--text-muted').trim() || '#64748b';
+        statusDiv.style.color = isError ? '#dc2626' : mutedColor;
         if (!isError) setTimeout(() => statusDiv.textContent = '', 3000);
     }
 
-    // ---------- 发送请求（支持流式 + 打字机）----------
+    // ---------- 网络搜索函数 ----------
+    async function searchWeb(query) {
+        try {
+            const res = await fetch(`https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1`);
+            if (!res.ok) return '';
+            const data = await res.json();
+            let context = '';
+            if (data.Abstract) context += data.Abstract + '\n';
+            if (data.AbstractText) context += data.AbstractText + '\n';
+            if (data.AbstractURL) context += `来源: ${data.AbstractURL}\n`;
+            if (data.RelatedTopics) {
+                data.RelatedTopics.slice(0, 3).forEach(topic => {
+                    if (topic.Text) context += topic.Text + '\n';
+                });
+            }
+            return context.trim();
+        } catch (e) {
+            console.warn('搜索失败：', e);
+            return '';
+        }
+    }
+
+    // ---------- 发送消息（支持工具调用）----------
     async function sendMessage() {
         if (!activeConfigId) { alert('请先选择或新增一个配置'); return; }
         const activeCfg = configs.find(c => c.id === activeConfigId);
@@ -275,52 +299,127 @@
 
         addMessage('user', message);
         userInput.value = '';
-        
+
+        // 助手消息占位
         const assistantMsgDiv = document.createElement('div');
         assistantMsgDiv.className = 'message assistant';
         assistantMsgDiv.textContent = '⏳ 思考中...';
         chatMessages.appendChild(assistantMsgDiv);
         chatMessages.scrollTop = chatMessages.scrollHeight;
-        
         setStatus('请求中...');
 
-        const requestBody = {
+        // 构建带工具定义的请求体
+        const tools = [
+            {
+                type: "function",
+                function: {
+                    name: "search_web",
+                    description: "当需要实时信息、最新动态或未知知识时，调用此工具搜索互联网。参数 query 为搜索关键词。",
+                    parameters: {
+                        type: "object",
+                        properties: {
+                            query: { type: "string", description: "搜索关键词" }
+                        },
+                        required: ["query"]
+                    }
+                }
+            }
+        ];
+
+        const initialBody = {
             model: activeCfg.model,
             messages: [{ role: 'user', content: message }],
-            stream: true,
+            tools: tools,
+            tool_choice: "auto",
+            stream: false,   // 工具调用阶段使用非流式，便于解析
             temperature: 0.7
         };
 
         try {
-            const response = await fetch(activeCfg.proxyUrl, {
+            let response = await fetch(activeCfg.proxyUrl, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${activeCfg.key}`
                 },
-                body: JSON.stringify(requestBody)
+                body: JSON.stringify(initialBody)
             });
 
-            if (!response.ok) {
-                const errText = await response.text();
-                throw new Error(`HTTP ${response.status}: ${errText}`);
-            }
+            if (!response.ok) throw new Error(`HTTP ${response.status}: ${await response.text()}`);
 
-            const contentType = response.headers.get('content-type') || '';
-            if (contentType.includes('text/event-stream') || contentType.includes('application/x-ndjson')) {
-                await handleStreamResponse(response, assistantMsgDiv);
+            let data = await response.json();
+            let chosenTool = data.choices?.[0]?.message?.tool_calls?.[0];
+            
+            // 如果模型请求调用搜索工具
+            if (chosenTool && chosenTool.function.name === 'search_web') {
+                const args = JSON.parse(chosenTool.function.arguments);
+                const query = args.query;
+                assistantMsgDiv.textContent = '🔍 正在搜索：' + query;
+                setStatus('正在搜索...');
+                
+                const searchResult = await searchWeb(query);
+                
+                // 构建历史消息：包含用户的原始问题、模型的工具调用请求、搜索结果
+                const messages = [
+                    { role: 'user', content: message },
+                    { role: 'assistant', content: null, tool_calls: [chosenTool] },
+                    { role: 'tool', tool_call_id: chosenTool.id, content: searchResult || '无结果' }
+                ];
+
+                // 第二次请求：基于搜索结果生成最终答案，使用流式
+                const finalBody = {
+                    model: activeCfg.model,
+                    messages: messages,
+                    stream: true,
+                    temperature: 0.7
+                };
+
+                assistantMsgDiv.textContent = ''; // 清空搜索状态
+                setStatus('正在生成回复...');
+                
+                const streamResponse = await fetch(activeCfg.proxyUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${activeCfg.key}`
+                    },
+                    body: JSON.stringify(finalBody)
+                });
+
+                if (!streamResponse.ok) throw new Error(`HTTP ${streamResponse.status}: ${await streamResponse.text()}`);
+                
+                await handleStreamResponse(streamResponse, assistantMsgDiv);
             } else {
-                const data = await response.json();
-                let fullReply = extractReplyContent(data);
+                // 模型直接回答（无工具调用），使用流式重新发起请求以获得打字机效果
+                // 注意：第一次请求是非流式的，所以这里我们用同样的消息再发一次流式请求
+                const streamBody = {
+                    model: activeCfg.model,
+                    messages: [{ role: 'user', content: message }],
+                    stream: true,
+                    temperature: 0.7
+                };
                 assistantMsgDiv.textContent = '';
-                await typewriterEffect(assistantMsgDiv, fullReply);
+                const streamResponse = await fetch(activeCfg.proxyUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${activeCfg.key}`
+                    },
+                    body: JSON.stringify(streamBody)
+                });
+                if (!streamResponse.ok) throw new Error(`HTTP ${streamResponse.status}: ${await streamResponse.text()}`);
+                await handleStreamResponse(streamResponse, assistantMsgDiv);
             }
 
-            assistantMsgDiv.dataset.rawContent = assistantMsgDiv.textContent;
+            // 保存原始 Markdown 并渲染
+            const rawContent = assistantMsgDiv.dataset.rawContent || assistantMsgDiv.textContent;
+            assistantMsgDiv.dataset.rawContent = rawContent;
             if (typeof marked !== 'undefined') {
                 try {
-                    assistantMsgDiv.innerHTML = marked.parse(assistantMsgDiv.dataset.rawContent);
-                } catch (e) {}
+                    assistantMsgDiv.innerHTML = marked.parse(rawContent);
+                } catch (e) {
+                    assistantMsgDiv.textContent = rawContent;
+                }
             }
             saveChatHistory();
             setStatus('✓ 请求成功');
@@ -333,12 +432,11 @@
         }
     }
 
-    // 处理流式响应，按行实时渲染 Markdown
+    // ---------- 流式响应处理 ----------
     async function handleStreamResponse(response, msgElement) {
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let fullText = '';
-        let buffer = '';
         msgElement.textContent = '';
 
         while (true) {
@@ -348,8 +446,7 @@
             const chunk = decoder.decode(value);
             const lines = chunk.split('\n');
             
-            for (let i = 0; i < lines.length; i++) {
-                const line = lines[i];
+            for (const line of lines) {
                 if (line.startsWith('data: ')) {
                     const dataStr = line.slice(6);
                     if (dataStr === '[DONE]') continue;
@@ -358,77 +455,17 @@
                         const delta = json.choices?.[0]?.delta?.content;
                         if (delta) {
                             fullText += delta;
-                            buffer += delta;
-                            
-                            // 如果遇到换行符，认为当前行结束，可以渲染缓冲区内容
-                            if (delta.includes('\n')) {
-                                // 将缓冲区内容渲染为 Markdown，但保留未完成的行
-                                const lastNewlineIndex = buffer.lastIndexOf('\n');
-                                const completedPart = buffer.substring(0, lastNewlineIndex + 1);
-                                const remainingPart = buffer.substring(lastNewlineIndex + 1);
-                                
-                                // 渲染已完成部分
-                                if (completedPart) {
-                                    const rendered = marked.parse(completedPart);
-                                    // 将渲染后的 HTML 与未完成纯文本拼接
-                                    msgElement.innerHTML = rendered + escapeHtml(remainingPart);
-                                } else {
-                                    msgElement.innerHTML = marked.parse(buffer) || '';
-                                }
-                            } else {
-                                // 没有换行，仍然只显示纯文本（或部分渲染，这里保持纯文本避免闪烁）
-                                msgElement.textContent = fullText;
-                            }
+                            msgElement.textContent = fullText;
                             chatMessages.scrollTop = chatMessages.scrollHeight;
                         }
                     } catch (e) {}
                 }
             }
         }
-        
-        // 流结束，最终渲染全部 Markdown
-        msgElement.innerHTML = marked.parse(fullText) || '';
         msgElement.dataset.rawContent = fullText;
     }
 
-    // 模拟打字机（降级方案），同样按行渲染
-    function typewriterEffect(element, text, speed = 20) {
-        return new Promise((resolve) => {
-            let i = 0;
-            element.textContent = '';
-            let buffer = '';
-            function type() {
-                if (i < text.length) {
-                    const char = text.charAt(i);
-                    buffer += char;
-                    element.textContent += char;  // 先纯文本追加
-                    i++;
-                    
-                    // 如果遇到换行，尝试渲染已完成的行
-                    if (char === '\n') {
-                        const rendered = marked.parse(buffer);
-                        element.innerHTML = rendered;
-                    }
-                    
-                    chatMessages.scrollTop = chatMessages.scrollHeight;
-                    setTimeout(type, speed);
-                } else {
-                    // 最终渲染
-                    element.innerHTML = marked.parse(text) || '';
-                    resolve();
-                }
-            }
-            type();
-        });
-    }
-
-    // 辅助：转义 HTML 特殊字符
-    function escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-    }
-
+    // ---------- 提取回复（降级用，此版本未使用）----------
     function extractReplyContent(data) {
         if (data.choices?.[0]?.message?.content) return data.choices[0].message.content;
         if (data.content) return data.content;
@@ -456,7 +493,7 @@
         if (chatMessages.children.length === 0) {
             const sysMsg = document.createElement('div');
             sysMsg.className = 'message system';
-            sysMsg.textContent = '在左侧选择或新增 API 配置，然后开始对话。';
+            sysMsg.textContent = '在左侧选择或新增 API 配置，然后开始对话。AI 会在需要时自动搜索网络。';
             sysMsg.dataset.rawContent = sysMsg.textContent;
             chatMessages.appendChild(sysMsg);
         }
