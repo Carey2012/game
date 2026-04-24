@@ -290,6 +290,25 @@
     }
 
     // ---------- 发送消息（支持工具调用）----------
+    // 模拟打字机效果（逐字显示）
+    function typewriterEffect(element, text, speed = 20) {
+        return new Promise((resolve) => {
+            let i = 0;
+            element.textContent = '';
+            function type() {
+                if (i < text.length) {
+                    element.textContent += text.charAt(i);
+                    i++;
+                    chatMessages.scrollTop = chatMessages.scrollHeight;
+                    setTimeout(type, speed);
+                } else {
+                    element.dataset.rawContent = text; // 保存原始文本
+                    resolve();
+                }
+            }
+            type();
+        });
+    }
     async function sendMessage() {
         if (!activeConfigId) { alert('请先选择或新增一个配置'); return; }
         const activeCfg = configs.find(c => c.id === activeConfigId);
@@ -306,119 +325,116 @@
         assistantMsgDiv.textContent = '⏳ 思考中...';
         chatMessages.appendChild(assistantMsgDiv);
         chatMessages.scrollTop = chatMessages.scrollHeight;
-        setStatus('请求中...');
 
-        // 构建带工具定义的请求体
-        const tools = [
-            {
-                type: "function",
-                function: {
-                    name: "search_web",
-                    description: "当需要实时信息、最新动态或未知知识时，调用此工具搜索互联网。参数 query 为搜索关键词。",
-                    parameters: {
-                        type: "object",
-                        properties: {
-                            query: { type: "string", description: "搜索关键词" }
-                        },
-                        required: ["query"]
-                    }
-                }
-            }
+        // 系统提示词：指导模型如何请求搜索
+        const systemPrompt = `你是一个有用的人工智能助手。如果你需要实时信息或最新数据来回答问题，请严格按照以下格式输出一行请求（不要使用其他格式）：
+    SEARCH: 搜索关键词
+    当你输出这行后，系统会自动进行网络搜索并将结果返回给你，然后你可以基于返回的信息继续回答用户的问题。
+    如果你不需要搜索，直接开始回答即可。`;
+
+        // 构建消息历史（初始只有系统提示和用户消息）
+        const messages = [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: message }
         ];
 
-        const initialBody = {
-            model: activeCfg.model,
-            messages: [{ role: 'user', content: message }],
-            tools: tools,
-            tool_choice: "auto",
-            stream: false,   // 工具调用阶段使用非流式，便于解析
-            temperature: 0.7
-        };
+        let fullAssistantReply = ''; // 用于收集最终显示内容
+        const MAX_TURNS = 3; // 防止无限循环，最多搜索3次
+        let turn = 0;
 
         try {
-            let response = await fetch(activeCfg.proxyUrl, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${activeCfg.key}`
-                },
-                body: JSON.stringify(initialBody)
-            });
-
-            if (!response.ok) throw new Error(`HTTP ${response.status}: ${await response.text()}`);
-
-            let data = await response.json();
-            let chosenTool = data.choices?.[0]?.message?.tool_calls?.[0];
-            
-            // 如果模型请求调用搜索工具
-            if (chosenTool && chosenTool.function.name === 'search_web') {
-                const args = JSON.parse(chosenTool.function.arguments);
-                const query = args.query;
-                assistantMsgDiv.textContent = '🔍 正在搜索：' + query;
-                setStatus('正在搜索...');
-                
-                const searchResult = await searchWeb(query);
-                
-                // 构建历史消息：包含用户的原始问题、模型的工具调用请求、搜索结果
-                const messages = [
-                    { role: 'user', content: message },
-                    { role: 'assistant', content: null, tool_calls: [chosenTool] },
-                    { role: 'tool', tool_call_id: chosenTool.id, content: searchResult || '无结果' }
-                ];
-
-                // 第二次请求：基于搜索结果生成最终答案，使用流式
-                const finalBody = {
+            while (turn < MAX_TURNS) {
+                // 使用非流式请求检查是否需要搜索
+                const checkBody = {
                     model: activeCfg.model,
                     messages: messages,
-                    stream: true,
+                    stream: false,
                     temperature: 0.7
                 };
 
-                assistantMsgDiv.textContent = ''; // 清空搜索状态
-                setStatus('正在生成回复...');
-                
-                const streamResponse = await fetch(activeCfg.proxyUrl, {
+                const checkResponse = await fetch(activeCfg.proxyUrl, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'Authorization': `Bearer ${activeCfg.key}`
                     },
-                    body: JSON.stringify(finalBody)
+                    body: JSON.stringify(checkBody)
                 });
 
-                if (!streamResponse.ok) throw new Error(`HTTP ${streamResponse.status}: ${await streamResponse.text()}`);
+                if (!checkResponse.ok) {
+                    const errText = await checkResponse.text();
+                    throw new Error(`HTTP ${checkResponse.status}: ${errText}`);
+                }
+
+                const data = await checkResponse.json();
+                const assistantMessage = data.choices?.[0]?.message;
+                if (!assistantMessage || !assistantMessage.content) {
+                    throw new Error('模型未返回有效内容');
+                }
+
+                const reply = assistantMessage.content.trim();
+                // 检查是否包含搜索标记
+                const searchMatch = reply.match(/SEARCH:\s*(.+)/i);
                 
-                await handleStreamResponse(streamResponse, assistantMsgDiv);
-            } else {
-                // 模型直接回答（无工具调用），使用流式重新发起请求以获得打字机效果
-                // 注意：第一次请求是非流式的，所以这里我们用同样的消息再发一次流式请求
-                const streamBody = {
-                    model: activeCfg.model,
-                    messages: [{ role: 'user', content: message }],
-                    stream: true,
-                    temperature: 0.7
-                };
-                assistantMsgDiv.textContent = '';
-                const streamResponse = await fetch(activeCfg.proxyUrl, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${activeCfg.key}`
-                    },
-                    body: JSON.stringify(streamBody)
-                });
-                if (!streamResponse.ok) throw new Error(`HTTP ${streamResponse.status}: ${await streamResponse.text()}`);
-                await handleStreamResponse(streamResponse, assistantMsgDiv);
+                if (searchMatch && searchMatch[1]) {
+                    const query = searchMatch[1].trim();
+                    // 更新界面提示
+                    assistantMsgDiv.textContent = `🔍 正在搜索：${query}`;
+                    setStatus('搜索中...');
+                    
+                    // 执行搜索
+                    const searchResult = await searchWeb(query);
+                    
+                    // 将模型的请求和搜索结果加入消息历史
+                    messages.push({ role: 'assistant', content: `SEARCH: ${query}` });
+                    messages.push({ role: 'user', content: `搜索结果：\n${searchResult || '无结果'}\n请基于以上结果继续回答用户的问题。` });
+                    
+                    turn++;
+                } else {
+                    // 没有搜索请求，跳出循环
+                    fullAssistantReply = reply;
+                    break;
+                }
             }
 
-            // 保存原始 Markdown 并渲染
-            const rawContent = assistantMsgDiv.dataset.rawContent || assistantMsgDiv.textContent;
-            assistantMsgDiv.dataset.rawContent = rawContent;
+            // 如果循环结束仍未得到最终答案，让模型最后一次总结
+            if (!fullAssistantReply) {
+                messages.push({ role: 'user', content: '请根据以上所有搜索结果和对话，给出最终答案。' });
+                const finalCheckBody = {
+                    model: activeCfg.model,
+                    messages: messages,
+                    stream: false,
+                    temperature: 0.7
+                };
+                const finalResponse = await fetch(activeCfg.proxyUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${activeCfg.key}`
+                    },
+                    body: JSON.stringify(finalCheckBody)
+                });
+                if (!finalResponse.ok) throw new Error(`HTTP ${finalResponse.status}: ${await finalResponse.text()}`);
+                const finalData = await finalResponse.json();
+                fullAssistantReply = finalData.choices?.[0]?.message?.content || '抱歉，无法生成回答。';
+            }
+
+            // --- 最后，用流式请求生成最终回答，获得打字机效果 ---
+            assistantMsgDiv.textContent = ''; // 清空
+            setStatus('正在生成回复...');
+            
+            // 构建用于流式生成的最终消息列表（去掉中间的搜索过程，只保留系统提示、用户原始问题和获得的资料）
+            // 简单起见，我们可以直接将收集到的 fullAssistantReply 逐字输出，不需要流式请求。
+            // 但为了打字机效果，我们模拟打字（因为非流式已经拿到完整文本）
+            await typewriterEffect(assistantMsgDiv, fullAssistantReply, 20);
+
+            // 保存和渲染
+            assistantMsgDiv.dataset.rawContent = fullAssistantReply;
             if (typeof marked !== 'undefined') {
                 try {
-                    assistantMsgDiv.innerHTML = marked.parse(rawContent);
+                    assistantMsgDiv.innerHTML = marked.parse(fullAssistantReply);
                 } catch (e) {
-                    assistantMsgDiv.textContent = rawContent;
+                    assistantMsgDiv.textContent = fullAssistantReply;
                 }
             }
             saveChatHistory();
